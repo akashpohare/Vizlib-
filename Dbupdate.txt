@@ -1,0 +1,29 @@
+-- This UPDATE statement modifies the 'config' column in the 'config_table'.
+-- It uses jsonb_set to replace the 'Qliksense' array in the JSONB config with an updated version.
+UPDATE config_table AS c
+SET config = jsonb_set(
+    -- The original config JSONB object.
+    c.config,
+    -- The path to the 'Qliksense' key in the JSONB.
+    '{Qliksense}',
+    -- Subquery to generate the new array for 'Qliksense'.
+    (
+        -- Aggregate the updated elements back into a JSONB array.
+        SELECT jsonb_agg(
+            -- For each element, set the 'hostname' key to the IP address if a match is found,
+            -- otherwise keep the existing 'hostname'.
+            jsonb_set(
+                elem,  -- The current array element (a JSONB object).
+                '{hostname}',  -- The path to the 'hostname' key.
+                -- Use COALESCE to fallback to the original 'hostname' if no IP is found.
+                COALESCE(to_jsonb(n."IP address"), elem -> 'hostname')
+            )
+        )
+        -- Expand the 'Qliksense' array into individual elements.
+        FROM jsonb_array_elements(c.config -> 'Qliksense') AS elem
+        -- LEFT JOIN to the nodes_table to find matching IP based on NodeRole and computername.
+        LEFT JOIN nodes_table AS n
+        -- Join condition: match 'computername' from JSON to 'NodeRole' in nodes_table.
+        ON elem ->> 'computername' = n."NodeRole"
+    )
+);
